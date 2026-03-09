@@ -6,6 +6,7 @@ const profileRoutes = require('./src/routes/profileRoutes');
 const skillRoutes = require('./src/routes/skillRoutes');
 const behavioralRoutes = require('./src/routes/behavioralRoutes');
 const trajectoryRoutes = require('./src/routes/trajectoryRoutes');
+const jobRoutes = require('./src/routes/jobRoutes');
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.use('/api', profileRoutes);
 app.use('/api', skillRoutes);
 app.use('/api', behavioralRoutes);
 app.use('/api', trajectoryRoutes);
+app.use('/api', jobRoutes);
 
 sequelize.sync({ alter: true }).then(() => {
   app.listen(8000, '0.0.0.0', () => {

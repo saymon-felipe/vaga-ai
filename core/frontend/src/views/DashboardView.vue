@@ -1,108 +1,142 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import api from '../services/api'
 
-const timeFilter = ref('24h')
+// Estados de Monitoramento
+const stats = ref({ total: 0, aplicadas: 0, analisando: 0, erro: 0 })
+const vagaAtual = ref(null)
+const ultimasVagas = ref([])
+const sistemaPronto = ref(false)
+const robotRodando = ref(false)
+const carregando = ref(true)
 
-const appliedJobsData = {
-  '24h': { total: 12, subtitle: 'Últimas 24 horas', trend: '+2 hoje', trendColor: 'text-emerald-400' },
-  '1w': { total: 45, subtitle: 'Últimos 7 dias', trend: '+15 esta semana', trendColor: 'text-emerald-400' },
-  '1m': { total: 142, subtitle: 'Últimos 30 dias', trend: '+42 este mês', trendColor: 'text-indigo-400' }
+// Requisitos para o botão
+const requisitos = ref({
+  perfil: false,
+  skills: false,
+  comportamental: false,
+  trajetoria: false
+})
+
+const checkStatusSistema = async () => {
+  try {
+    const [p, s, b, t] = await Promise.all([
+      api.get('/profile'),
+      api.get('/skills'),
+      api.get('/behavioral'),
+      api.get('/trajectory')
+    ])
+    
+    // Validação simples: verificar se retornaram dados
+    requisitos.value.perfil = !!p.data?.nome
+    requisitos.value.skills = s.data?.length > 0
+    requisitos.value.comportamental = !!b.data?.ai_analysis
+    requisitos.value.trajetoria = t.data?.length > 0
+
+    sistemaPronto.value = Object.values(requisitos.value).every(v => v === true)
+  } catch (e) {
+    console.error("Erro ao validar sistema", e)
+  }
 }
-const currentApplied = computed(() => appliedJobsData[timeFilter.value])
 
-const profileMatch = ref(85)
-const marketStacks = ref([
-  { name: 'Python', salary: 'R$ 12.000', percentage: 90 },
-  { name: 'Docker', salary: 'R$ 11.500', percentage: 80 },
-  { name: 'Vue.js', salary: 'R$ 9.500', percentage: 65 },
-  { name: 'MongoDB', salary: 'R$ 9.000', percentage: 60 },
-  { name: 'OpenAI API', salary: 'R$ 14.000', percentage: 40 },
-])
+const fetchVagas = async () => {
+  try {
+    const res = await api.get('/jobs/status') // Precisaremos criar esta rota no back
+    ultimasVagas.value = res.data.recentes
+    stats.value = res.data.stats
+    vagaAtual.value = res.data.processando
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const toggleRobot = async () => {
+  if (!sistemaPronto.value) return
+  
+  try {
+    const endpoint = robotRodando.value ? '/jobs/stop' : '/jobs/start'
+    await api.post(endpoint, { cargo: 'Desenvolvedor', localizacao: 'Remoto' })
+    robotRodando.value = !robotRodando.value
+  } catch (e) {
+    alert("Erro ao controlar o robô")
+  }
+}
+
+onMounted(async () => {
+  await checkStatusSistema()
+  await fetchVagas()
+  // Polling para atualização em tempo real a cada 5 segundos
+  setInterval(fetchVagas, 5000)
+  carregando.value = false
+})
 </script>
 
 <template>
-  <div class="space-y-6">
-    
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-      
-      <div class="group relative bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-6 overflow-hidden transition-all duration-500 hover:bg-white/10 hover:shadow-[0_0_40px_-10px_rgba(99,102,241,0.3)] hover:-translate-y-1">
-        <div class="absolute inset-0 bg-gradient-to-br from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-        
-        <div class="relative z-10">
-          <div class="flex justify-between items-start mb-6">
-            <div>
-              <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1">Vagas Aplicadas</h3>
-              <p class="text-5xl font-black text-white tracking-tight">{{ currentApplied.total }}</p>
-            </div>
-            <div class="relative">
-              <select v-model="timeFilter" class="appearance-none bg-slate-800/50 border border-white/10 text-slate-300 text-xs font-medium rounded-xl px-4 py-2 pr-8 outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer backdrop-blur-sm transition-all">
-                <option value="24h">24 Horas</option>
-                <option value="1w">1 Semana</option>
-                <option value="1m">1 Mês</option>
-              </select>
-              <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-              </div>
-            </div>
-          </div>
-          <div class="flex items-center text-sm">
-            <span class="font-bold px-2.5 py-1 rounded-lg bg-white/5 border border-white/5" :class="currentApplied.trendColor">
-              {{ currentApplied.trend }}
-            </span>
-            <span class="text-slate-500 ml-3 text-xs font-medium uppercase tracking-wider">vs período anterior</span>
-          </div>
-        </div>
+  <div class="space-y-8">
+    <div class="bg-white/5 border border-white/10 p-8 rounded-3xl backdrop-blur-xl flex flex-col md:flex-row justify-between items-center gap-6">
+      <div>
+        <h2 class="text-2xl font-bold text-white mb-2">Painel de Operações</h2>
+        <p class="text-slate-400 text-sm" v-if="sistemaPronto">Sistema pronto para buscar oportunidades.</p>
+        <p class="text-red-400 text-sm font-medium" v-else>Complete seu perfil, skills e teste comportamental para iniciar.</p>
       </div>
 
-      <div class="group relative bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-6 overflow-hidden transition-all duration-500 hover:bg-white/10 hover:shadow-[0_0_40px_-10px_rgba(168,85,247,0.3)] hover:-translate-y-1">
-        <div class="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-        
-        <div class="relative z-10 flex flex-col h-full justify-between">
-          <div>
-            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1">Adequação do Perfil</h3>
-            <div class="flex items-baseline gap-2">
-              <p class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 tracking-tight">{{ profileMatch }}%</p>
-              <p class="text-slate-500 text-sm font-medium">Match Score</p>
-            </div>
-          </div>
-          
-          <div class="mt-6">
-            <div class="w-full bg-slate-800/50 rounded-full h-3 p-0.5 border border-white/5 shadow-inner">
-              <div 
-                class="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-1000 ease-out relative" 
-                :style="{ width: profileMatch + '%' }"
-              >
-                <div class="absolute right-0 top-0 bottom-0 w-4 bg-white/30 rounded-full blur-[2px]"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
+      <button 
+        @click="toggleRobot"
+        :disabled="!sistemaPronto"
+        :class="[
+          !sistemaPronto ? 'opacity-30 cursor-not-allowed bg-slate-700' : 
+          robotRodando ? 'bg-red-500 hover:bg-red-600 shadow-red-500/20' : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/20'
+        ]"
+        class="group relative px-10 py-4 rounded-2xl font-black uppercase tracking-widest text-white transition-all shadow-2xl cursor-pointer"
+      >
+        <div v-if="robotRodando" class="absolute -top-1 -right-1 w-3 h-3 bg-red-400 rounded-full animate-ping"></div>
+        {{ robotRodando ? 'Parar Automação' : 'Iniciar Robô' }}
+      </button>
     </div>
 
-    <div class="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-8 transition-all duration-500 hover:bg-white/[0.07]">
-      <h3 class="text-sm font-semibold text-slate-300 uppercase tracking-widest mb-8 flex items-center gap-3">
-        <span class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
-        Top Stacks do Mercado & Remuneração
-      </h3>
-      
-      <div class="space-y-6">
-        <div v-for="(stack, index) in marketStacks" :key="stack.name" class="group relative">
-          <div class="flex justify-between items-end mb-2">
-            <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">{{ stack.name }}</span>
-            <span class="text-xs font-bold font-mono text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded border border-emerald-400/20">{{ stack.salary }}</span>
-          </div>
-          <div class="w-full bg-slate-800/50 rounded-full h-2 overflow-hidden border border-white/5">
-            <div 
-              class="h-full rounded-r-full transition-all duration-1000 ease-out relative"
-              :class="index % 2 === 0 ? 'bg-gradient-to-r from-indigo-500 to-indigo-400' : 'bg-gradient-to-r from-purple-500 to-purple-400'"
-              :style="{ width: stack.percentage + '%' }"
-            ></div>
-          </div>
-        </div>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div v-for="(val, label) in stats" :key="label" class="bg-white/5 border border-white/10 p-6 rounded-2xl">
+        <p class="text-xs font-bold text-slate-500 uppercase mb-2">{{ label }}</p>
+        <p class="text-3xl font-black text-white">{{ val }}</p>
       </div>
     </div>
 
+    <div v-if="vagaAtual" class="bg-indigo-600/10 border border-indigo-500/30 p-6 rounded-2xl animate-pulse">
+      <div class="flex items-center gap-4">
+        <div class="w-2 h-2 bg-indigo-400 rounded-full"></div>
+        <p class="text-indigo-400 font-bold text-sm uppercase tracking-tighter">Processando Agora:</p>
+      </div>
+      <h3 class="text-xl font-bold text-white mt-2">{{ vagaAtual.vaga_titulo }} @ {{ vagaAtual.empresa_nome }}</h3>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div class="lg:col-span-2 bg-white/5 border border-white/10 rounded-3xl p-6">
+        <h3 class="text-lg font-bold mb-6">Histórico Recente</h3>
+        <table class="w-full text-left">
+          <thead class="text-slate-500 text-xs uppercase">
+            <tr>
+              <th class="pb-4">Empresa</th>
+              <th class="pb-4">Vaga</th>
+              <th class="pb-4">Match</th>
+              <th class="pb-4">Status</th>
+            </tr>
+          </thead>
+          <tbody class="text-sm">
+            <tr v-for="vaga in ultimasVagas" :key="vaga.id" class="border-t border-white/5">
+              <td class="py-4 text-white font-medium">{{ vaga.empresa_nome }}</td>
+              <td class="py-4 text-slate-400">{{ vaga.vaga_titulo }}</td>
+              <td class="py-4">
+                <span class="text-cyan-400 font-bold">{{ vaga.match_score }}%</span>
+              </td>
+              <td class="py-4">
+                <span :class="vaga.status === 'Aplicado' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'" class="px-3 py-1 rounded-full text-[10px] font-bold">
+                  {{ vaga.status }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </template>

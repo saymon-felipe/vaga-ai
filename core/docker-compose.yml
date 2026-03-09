@@ -14,12 +14,13 @@ services:
       - "3306:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
-    # Adicionamos um healthcheck para garantir que o banco está pronto
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - vagaai-network
 
   backend:
     build: ./backend
@@ -29,12 +30,35 @@ services:
       - "8000:8000"
     depends_on:
       mariadb:
-        condition: service_healthy # O backend só liga quando o banco estiver 100% pronto
+        condition: service_healthy
     env_file:
-      - .env
+      - ./backend/.env
     environment:
-      # URL limpa para o Node.js/Sequelize
       - DATABASE_URL=mysql://user:password@mariadb:3306/career_db
+    networks:
+      - vagaai-network
+
+  worker:
+    build: ./worker
+    container_name: vagaai_worker
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    # Pode criar o arquivo .env dentro da pasta worker para chaves de API
+    env_file:
+      - ./worker/.env
+    environment:
+      - DB_HOST=mariadb
+      - DB_USER=root
+      - DB_PASSWORD=rootpassword
+      - DB_NAME=career_db
+    networks:
+      - vagaai-network
 
 volumes:
   mariadb_data:
+
+networks:
+  vagaai-network:
+    driver: bridge

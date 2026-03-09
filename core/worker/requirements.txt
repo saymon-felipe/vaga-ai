@@ -1,0 +1,9 @@
+openai==1.14.0
+langchain==0.1.13
+playwright==1.42.0
+beautifulsoup4==4.12.3
+SQLAlchemy==2.0.29
+PyMySQL==1.1.0
+python-dotenv==1.0.1
+fastapi==0.110.0
+uvicorn==0.29.0
