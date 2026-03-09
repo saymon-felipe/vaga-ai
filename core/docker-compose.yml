@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  mariadb:
+    image: mariadb:10.11
+    container_name: vagaai_mariadb
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: career_db
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    # Adicionamos um healthcheck para garantir que o banco está pronto
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: vagaai_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      mariadb:
+        condition: service_healthy # O backend só liga quando o banco estiver 100% pronto
+    env_file:
+      - .env
+    environment:
+      # URL limpa para o Node.js/Sequelize
+      - DATABASE_URL=mysql://user:password@mariadb:3306/career_db
+
+volumes:
+  mariadb_data:

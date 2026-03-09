@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+button, 
+[type="button"], 
+[type="reset"], 
+[type="submit"],
+select,
+label[for],
+.cursor-pointer {
+  cursor: pointer !important;
+}
+
+button:disabled {
+  cursor: not-allowed !important;
+}
