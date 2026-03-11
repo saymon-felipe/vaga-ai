@@ -12,6 +12,7 @@ class JobApplication(Base):
     vaga_url = Column(Text)
     status = Column(String(50), default='Analisando')
     match_score = Column(Integer)
+    faixa_salarial = Column(String(100), default="A Combinar")
     job_description_raw = Column(Text)
     respostas_ia_raw = Column(JSON)
     argumentos_match_raw = Column(JSON)

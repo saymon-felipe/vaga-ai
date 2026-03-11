@@ -14,7 +14,7 @@ const Profile = sequelize.define('Profile', {
   email: {
     type: DataTypes.STRING,
     allowNull: false,
-    unique: true
+    unique: 'uk_profile_email_fixo'
   },
   telefone: {
     type: DataTypes.STRING

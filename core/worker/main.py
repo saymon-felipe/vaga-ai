@@ -24,5 +24,9 @@ async def stop_worker():
     state.is_running = False
     return {"status": "sucesso", "mensagem": "Automação interrompida."}
 
+@app.get("/api/status")
+async def get_status():
+    return {"is_running": state.is_running}
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8001)

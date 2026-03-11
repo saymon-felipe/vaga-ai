@@ -7,11 +7,18 @@ const JobApplication = sequelize.define('JobApplication', {
   empresa_nome: { type: DataTypes.STRING, allowNull: false },
   vaga_titulo: { type: DataTypes.STRING, allowNull: false },
   vaga_url: { type: DataTypes.TEXT, allowNull: false },
-  status: { type: DataTypes.ENUM('Analisando', 'Aplicado', 'Ignorado', 'Erro'), defaultValue: 'Analisando' },
+  status: {
+    type: DataTypes.STRING,
+    defaultValue: 'Analisando'
+  },
   match_score: { type: DataTypes.INTEGER, allowNull: true },
   job_description_raw: { type: DataTypes.TEXT, allowNull: true },
   respostas_ia_raw: { type: DataTypes.JSON, allowNull: true },
-  argumentos_match_raw: { type: DataTypes.JSON, allowNull: true }
+  argumentos_match_raw: { type: DataTypes.JSON, allowNull: true },
+  faixa_salarial: {
+    type: DataTypes.STRING,
+    defaultValue: 'A Combinar'
+  },
 }, {
   tableName: 'job_applications',
   timestamps: true
