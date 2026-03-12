@@ -4,12 +4,14 @@ import re
 from bs4 import BeautifulSoup
 from openai import AsyncOpenAI
 import httpx
+from dotenv import load_dotenv
+from logger import logger
 
-IP_DO_DESKTOP = "100.115.53.95"
+load_dotenv()
 
+IP_DO_DESKTOP = os.getenv("IP_DO_DESKTOP", "100.115.53.95")
 nuvem_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 
-# [MUDANÇA 1] Aumentamos o timeout para 120s (Garante que a GPU tenha tempo de trabalhar)
 local_http_client = httpx.AsyncClient(timeout=120.0)
 local_client = AsyncOpenAI(
     base_url=f"http://{IP_DO_DESKTOP}:11434/v1",
@@ -19,118 +21,112 @@ local_client = AsyncOpenAI(
 
 def otimizar_texto_para_ia(html_content):
     soup = BeautifulSoup(html_content, "html.parser")
-    
-    for element in soup(["script", "style", "header", "footer", "nav", "aside", "form", "meta", "noscript", "svg", "img", "button"]):
+    for element in soup(["script", "style", "header", "footer", "nav", "aside", "svg", "img", "button"]):
         element.extract()
-    
-    palavras_lixo = [
-        "vagas relacionadas", "vagas similares", "política de privacidade", 
-        "termos de uso", "direitos reservados", "clique aqui", "inscreva-se", 
-        "candidatar", "compartilhar", "outras vagas", "faça login", "esqueci minha senha"
-    ]
-    
-    palavras_chave = [
-        "requisito", "experiência", "conhecimento", "salário", "r$", "benefício", 
-        "remoto", "híbrido", "stack", "tecnologia", "diferencial", "atribuições", 
-        "responsabilidades", "modelo de contratação", "pj", "clt", "vaga", "sobre a posição"
-    ]
-    
-    tags_uteis = soup.find_all(['p', 'li', 'h2', 'h3', 'h4', 'span'])
-    textos_relevantes = []
-    
-    for i, tag in enumerate(tags_uteis):
-        text = tag.get_text(separator=" ", strip=True)
-        text_lower = text.lower()
-        
-        if 30 < len(text) < 1500 and not any(lixo in text_lower for lixo in palavras_lixo):
-            if i < 5 or any(chave in text_lower for chave in palavras_chave):
-                textos_relevantes.append(text)
-            
-    textos_unicos = list(dict.fromkeys(textos_relevantes))
-    return "\n".join(textos_unicos)
+    return re.sub(r'\s+', ' ', soup.get_text(separator=" ", strip=True))[:4500]
 
-async def extrair_miolo_local(texto_completo):
+def enxugar_perfil(dados_completos):
+    perfil = dados_completos.get("perfil", {})
+    return {
+        "cargo": perfil.get("cargo", ""),
+        "senioridade": perfil.get("senioridade", ""),
+        "modalidade": perfil.get("modalidade", ""),
+        "skills": [
+            {"nome": s.get("nome"), "nivel": s.get("nivel")} 
+            for s in dados_completos.get("skills", [])
+        ]
+    }
+
+async def extrair_json_seguro(texto_ia, fallback_vazio):
+    try:
+        match = re.search(r'\{.*\}', texto_ia.replace('\n', ''), re.DOTALL)
+        if match: return json.loads(match.group())
+        return json.loads(texto_ia)
+    except:
+        return fallback_vazio
+
+async def triagem_eliminatoria_local(texto_vaga, skills_usuario):
+    nomes_skills = [s.get("nome", "").lower() for s in skills_usuario]
     prompt = f"""
-    Extraia do texto abaixo APENAS:
-    - Nome da Empresa
-    - Salário
-    - Requisitos
-    - Responsabilidades
-    
-    NÃO responda com saudações. Seja direto.
-    
-    Texto:
-    {texto_completo}
+    Responda APENAS com 'SIM' ou 'NAO'.
+    O texto da vaga EXIGE OBRIGATORIAMENTE experiência em uma linguagem principal ou framework backend que NÃO está nesta lista: {nomes_skills}?
+    Texto da vaga: {texto_vaga[:2500]}
     """
     try:
-        response = await local_client.chat.completions.create(
+        resposta = await local_client.chat.completions.create(
             model="qwen2.5:3b",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            # [MUDANÇA 2] keep_alive: -1 força a GPU a manter o modelo sempre pronto (sem atrasos)
-            extra_body={"keep_alive": -1}
+            temperature=0.0
         )
-        return response.choices[0].message.content
+        return "NAO" in resposta.choices[0].message.content.strip().upper()
     except Exception as e:
-        print(f"   - [AVISO] GPU Local ocupada ou Ollama offline. Bypass ativado. ({e})")
-        # Se cair no bypass, manda um texto bem menor para não estourar a OpenAI
-        return texto_completo[:1500] 
+        logger.warning(f"Erro no Guardião Local: {e}")
+        return True 
 
-# [MUDANÇA 3] Função que corta o envio de dados inúteis para a OpenAI (Economiza milhares de tokens)
-def enxugar_perfil_para_openai(perfil_usuario):
-    try:
-        skills = [s.get("nome") for s in perfil_usuario.get("skills", [])]
-        perfil = perfil_usuario.get("perfil", {})
-        
-        perfil_enxuto = {
-            "senioridade": perfil.get("senioridade", "Não informado"),
-            "cargo_desejado": perfil.get("cargo", "Desenvolvedor"),
-            "skills_principais": skills
-        }
-        return perfil_enxuto
-    except Exception:
-        return {"aviso": "Usar conhecimentos gerais de desenvolvimento."}
-
-async def analisar_vaga_com_ia(vaga_texto, perfil_usuario):
-    texto_filtrado = await extrair_miolo_local(vaga_texto)
-    
-    # Aplica a limpeza do perfil antes de gastar tokens
-    perfil_limpo = enxugar_perfil_para_openai(perfil_usuario)
-    
+async def destrinchar_vaga_local(texto_vaga, titulo):
     prompt = f"""
-    Atue como Tech Recruiter. Analise a vaga e o perfil.
-    
-    Vaga:
-    {texto_filtrado}
-    
-    Perfil: 
-    {json.dumps(perfil_limpo)}
-    
-    Retorne APENAS um JSON válido com o exato schema abaixo:
+    Extraia as informações da vaga "{titulo}" e retorne EXATAMENTE este formato JSON:
     {{
-      "empresa_nome": "Nome real da empresa",
-      "faixa_salarial": "Valor extraído (ex: R$ 5.000) ou 'A Combinar'",
-      "descricao_formatada": "Crie um resumo claro. Use quebras de linha (\\n\\n) para separar blocos.",
-      "match_score": int (0-100), 
-      "status": "Recomendada" (se score > 85) ou "Ignorado", 
-      "argumentos": ["motivo 1", "motivo 2"]
+      "empresa": "Nome da empresa (ou 'Confidencial')",
+      "salario": "Valor numérico, faixa ou 'A Combinar'",
+      "senioridade_exigida": "Qual o nível exigido? (Ex: Júnior, Pleno, Sênior, Especialista, Não especificado)",
+      "resumo": "Uma frase resumindo a vaga",
+      "obrigatorios": ["item 1", "item 2"],
+      "desejaveis": ["item 1", "item 2"],
+      "beneficios": ["item 1", "item 2"]
     }}
+    Procure bem pelo salário e empresa no início ou fim do texto.
+    Texto: {texto_vaga}
     """
+    fallback = {
+        "empresa": "Confidencial", "salario": "A Combinar", "senioridade_exigida": "Não especificado", 
+        "resumo": "Vaga na área de tecnologia.", "obrigatorios": [], "desejaveis": [], "beneficios": []
+    }
+    try:
+        resposta = await local_client.chat.completions.create(
+            model="qwen2.5:3b",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1
+        )
+        return await extrair_json_seguro(resposta.choices[0].message.content, fallback)
+    except Exception as e:
+        logger.warning(f"Erro no Compactador Local: {e}")
+        return fallback
+
+async def analise_profunda_nuvem(vaga_destrinchada, dados_usuario):
+    perfil_clean = enxugar_perfil(dados_usuario)
+    prompt = f"""
+Você é um Headhunter Sênior implacável.
+Calcule a Previsão de Sucesso (0 a 100) baseando-se no cruzamento exato de habilidades e NÍVEL DE SENIORIDADE.
+
+VAGA COMPACTADA: {json.dumps(vaga_destrinchada)}
+PERFIL DO CANDIDATO: {json.dumps(perfil_clean)}
+
+REGRAS DE RANKING:
+1. SCORE TÉCNICO (50 pts): Peso 1.5 se o requisito obrigatório bater com uma Skill "Avançada" do candidato. Peso 1.0 para "Intermediária".
+2. SENIORIDADE (20 pts): 
+   - O candidato é estritamente {perfil_clean.get('senioridade')}.
+   - REGRA ELIMINATÓRIA: Analise o contexto da vaga. Se ela exigir ou der indícios claros de nível Júnior, Sênior, Especialista, Tech Lead, Trainee ou Estágio, zere esta categoria E acione o "corte_senioridade".
+   - Ganha 20 pontos apenas se a vaga for claramente para Pleno/Mid-level ou se não especificar senioridade mas o escopo bater com um nível Pleno.
+3. EXTRAS (30 pts): Some pontos se a vaga oferecer bons benefícios e bater com os requisitos desejáveis.
+4. PENALIDADE: Subtraia 30 pontos para cada requisito obrigatório crítico que o candidato NÃO possui.
+
+Retorne APENAS o JSON EXATAMENTE neste formato:
+{{
+  "previsao_sucesso": 85,
+  "corte_senioridade": false, // MUITO IMPORTANTE: Retorne true APENAS se a vaga for de nível incompatível (ex: Sênior ou Júnior). Retorne false se for Pleno ou compatível.
+  "argumentos": ["Motivo 1", "Risco detectado"]
+}}
+"""
+    fallback = {"previsao_sucesso": 50, "corte_senioridade": True, "argumentos": ["Falha na análise da IA Nuvem"]}
     try:
         response = await nuvem_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4.1-nano",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            response_format={ "type": "json_object" }
+            response_format={ "type": "json_object" },
+            temperature=0.1
         )
-        return json.loads(response.choices[0].message.content)
+        return await extrair_json_seguro(response.choices[0].message.content, fallback)
     except Exception as e:
-        print(f"-> [WORKER-ERRO] Falha na IA em nuvem: {e}")
-        return {
-            "empresa_nome": "Desconhecida", 
-            "faixa_salarial": "A Combinar", 
-            "descricao_formatada": "Falha ao formatar texto.", 
-            "match_score": 0, 
-            "status": "Erro", 
-            "argumentos": []
-        }
+        logger.error(f"Erro na IA Nuvem: {e}")
+        return fallback

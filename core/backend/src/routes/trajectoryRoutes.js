@@ -28,7 +28,7 @@ router.post('/trajectory/refine', async (req, res) => {
 
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-nano',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
     });

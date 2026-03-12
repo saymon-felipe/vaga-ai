@@ -6,12 +6,10 @@ const router = express.Router();
 
 router.get('/jobs/status', async (req, res) => {
   try {
-    // 1. Busca as vagas mais recentes no banco
     const jobs = await JobApplication.findAll({
       order: [['createdAt', 'DESC']]
     });
 
-    // 2. Pergunta ao Worker (no Windows) se ele ainda está rodando
     let isWorkerRunning = false;
     try {
       const workerResponse = await fetch('http://host.docker.internal:8001/api/status');
@@ -23,7 +21,6 @@ router.get('/jobs/status', async (req, res) => {
       console.log('-> [NODE] Aviso: Worker offline ou inatingível.');
     }
 
-    // 3. Devolve tudo mastigado para o Frontend
     res.json({ 
       isRunning: isWorkerRunning, 
       jobs: jobs 
@@ -33,12 +30,56 @@ router.get('/jobs/status', async (req, res) => {
   }
 });
 
+router.put('/jobs/:id/applied', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { applied } = req.body;
+    
+    const job = await JobApplication.findByPk(id);
+    if (!job) {
+      return res.status(404).json({ error: 'Vaga não encontrada' });
+    }
+    
+    job.applied = applied;
+    await job.save();
+    
+    res.json(job);
+  } catch (error) {
+    console.error('Erro ao atualizar status de aplicação:', error);
+    res.status(500).json({ error: 'Erro interno ao atualizar aplicação' });
+  }
+});
+
+router.get('/jobs/notifications', async (req, res) => {
+  try {
+    const notifications = await JobApplication.findAll({
+      where: { requer_confirmacao_email: true, status: 'Aplicado' },
+      order: [['createdAt', 'DESC']]
+    });
+    res.json(notifications);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar notificações.' });
+  }
+});
+
+router.put('/jobs/:id/confirm-email', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await JobApplication.update(
+      { requer_confirmacao_email: false },
+      { where: { id } }
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao atualizar status do e-mail.' });
+  }
+});
+
 router.post('/jobs/start', async (req, res) => {
   const { cargo, localizacao } = req.body;
   console.log(`-> [NODE] Mandando sinal para INICIAR o Worker no Windows...`);
 
   try {
-    // [MUDANÇA] Aponta para a máquina local do Windows em vez do container
     const response = await fetch('http://host.docker.internal:8001/api/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -56,7 +97,6 @@ router.post('/jobs/stop', async (req, res) => {
   console.log(`-> [NODE] Mandando sinal para PARAR o Worker no Windows...`);
 
   try {
-    // [MUDANÇA] Aponta para a máquina local do Windows
     const response = await fetch('http://host.docker.internal:8001/api/stop', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }

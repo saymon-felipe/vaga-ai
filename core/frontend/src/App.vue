@@ -1,6 +1,6 @@
 <script setup>
-import { ref, computed, markRaw, onMounted } from 'vue'
-import api from './services/api' // Importando a instância do axios
+import { ref, computed, markRaw, onMounted, onUnmounted } from 'vue'
+import api from './services/api' 
 
 import DashboardView from './views/DashboardView.vue'
 import ProfileView from './views/ProfileView.vue'
@@ -9,9 +9,12 @@ import BehavioralView from './views/BehavioralView.vue'
 import TrajectoryView from './views/TrajectoryView.vue'
 
 const activeTab = ref('dashboard')
-const usuarioFoto = ref(null) // Estado para armazenar a foto do perfil
+const usuarioFoto = ref(null) 
 
-// Busca a foto do usuário ao carregar a aplicação
+const notificacoes = ref([])
+const showNotifications = ref(false)
+let notifInterval = null
+
 const carregarFotoPerfil = async () => {
   try {
     const response = await api.get('/profile')
@@ -23,8 +26,32 @@ const carregarFotoPerfil = async () => {
   }
 }
 
+const fetchNotificacoes = async () => {
+  try {
+    const res = await api.get('/jobs/notifications')
+    notificacoes.value = res.data
+  } catch (e) {
+    console.error("Erro ao buscar notificações:", e)
+  }
+}
+
+const marcarComoLida = async (id) => {
+  try {
+    await api.put(`/jobs/${id}/confirm-email`)
+    await fetchNotificacoes()
+  } catch (e) {
+    console.error("Erro ao confirmar e-mail", e)
+  }
+}
+
 onMounted(() => {
   carregarFotoPerfil()
+  fetchNotificacoes()
+  notifInterval = setInterval(fetchNotificacoes, 10000) // Checa a cada 10s
+})
+
+onUnmounted(() => {
+  if (notifInterval) clearInterval(notifInterval)
 })
 
 const menuItems = [
@@ -90,10 +117,46 @@ const currentTitle = computed(() => {
           {{ currentTitle }}
         </h2>
         
-        <div class="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 p-[2px] cursor-pointer hover:scale-110 transition-transform duration-300 shadow-lg shadow-indigo-500/20 overflow-hidden">
-          <div class="w-full h-full bg-slate-900 rounded-full flex items-center justify-center overflow-hidden">
-            <img v-if="usuarioFoto" :src="usuarioFoto" alt="User Avatar" class="w-full h-full object-cover" />
-            <span v-else class="text-xs font-bold text-slate-200">EU</span>
+        <div class="flex items-center gap-6 relative">
+          
+          <div class="relative">
+            <button 
+              @click="showNotifications = !showNotifications"
+              class="relative p-2 text-slate-400 hover:text-white transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              <span v-if="notificacoes.length > 0" class="absolute top-0 right-0 h-4 w-4 bg-red-500 rounded-full text-[10px] font-bold text-white flex items-center justify-center border-2 border-slate-900">
+                {{ notificacoes.length }}
+              </span>
+            </button>
+
+            <div v-if="showNotifications" class="absolute right-0 mt-2 w-80 bg-[#161925] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden">
+              <div class="p-4 border-b border-white/5 bg-white/5">
+                <h3 class="text-sm font-bold text-white">Pendências</h3>
+              </div>
+              <div class="max-h-80 overflow-y-auto custom-scrollbar p-2">
+                <div v-if="notificacoes.length === 0" class="p-4 text-center text-sm text-slate-500">
+                  Nenhuma notificação no momento.
+                </div>
+                <div v-for="notif in notificacoes" :key="notif.id" class="p-3 bg-white/5 hover:bg-white/10 rounded-xl mb-2 transition-colors border border-white/5">
+                  <p class="text-xs text-amber-400 font-bold mb-1">Confirmação de E-mail</p>
+                  <p class="text-sm font-medium text-white">{{ notif.empresa_nome }}</p>
+                  <p class="text-xs text-slate-400 truncate mb-3">{{ notif.vaga_titulo }}</p>
+                  <button @click="marcarComoLida(notif.id)" class="w-full py-1.5 bg-amber-500/20 hover:bg-amber-500 hover:text-white text-amber-400 text-xs font-bold rounded-lg transition-colors">
+                    Marcar como Lida
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 p-[2px] cursor-pointer shadow-lg shadow-indigo-500/20 overflow-hidden">
+            <div class="w-full h-full bg-slate-900 rounded-full flex items-center justify-center overflow-hidden">
+              <img v-if="usuarioFoto" :src="usuarioFoto" alt="User Avatar" class="w-full h-full object-cover" />
+              <span v-else class="text-xs font-bold text-slate-200">EU</span>
+            </div>
           </div>
         </div>
       </header>
@@ -104,3 +167,20 @@ const currentTitle = computed(() => {
     </main>
   </div>
 </template>
+
+<style>
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+</style>

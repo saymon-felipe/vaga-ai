@@ -11,6 +11,10 @@ const JobApplication = sequelize.define('JobApplication', {
     type: DataTypes.STRING,
     defaultValue: 'Analisando'
   },
+  applied: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
   match_score: { type: DataTypes.INTEGER, allowNull: true },
   job_description_raw: { type: DataTypes.TEXT, allowNull: true },
   respostas_ia_raw: { type: DataTypes.JSON, allowNull: true },
@@ -19,6 +23,10 @@ const JobApplication = sequelize.define('JobApplication', {
     type: DataTypes.STRING,
     defaultValue: 'A Combinar'
   },
+  requer_confirmacao_email: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  }
 }, {
   tableName: 'job_applications',
   timestamps: true
