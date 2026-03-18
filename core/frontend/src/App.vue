@@ -83,7 +83,7 @@ const currentTitle = computed(() => {
       
       <div class="flex items-center pl-[1.8rem] group-hover:pl-6 h-20 border-b border-white/5 transition-all duration-300">
         <div class="w-10 h-10 flex-shrink-0 flex items-center justify-center">
-          <img src="@/assets/img/vaga-ai.png" alt="Logo" class="w-full h-full object-contain" />
+          <img src="./assets/img/vaga-ai.png" alt="Logo" class="w-full h-full object-contain" />
         </div>
         <h1 class="text-xl font-black tracking-tighter transition-all duration-300 whitespace-nowrap overflow-hidden max-w-0 opacity-0 group-hover:max-w-xs group-hover:opacity-100 group-hover:ml-4">
           Vaga<span class="font-black bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-500">AI</span>

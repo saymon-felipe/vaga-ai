@@ -11,7 +11,7 @@ from api_client import obter_perfil_usuario
 from ai_service import otimizar_texto_para_ia, triagem_eliminatoria_local, destrinchar_vaga_local, analise_profunda_nuvem
 from logger import logger
 
-DEV_MODE = True
+DEV_MODE = False
 
 def pre_filtro_local(titulo_vaga: str, texto_vaga: str, perfil: dict, skills: list) -> bool:
     titulo_lower = titulo_vaga.lower()

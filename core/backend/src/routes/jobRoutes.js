@@ -50,6 +50,26 @@ router.put('/jobs/:id/applied', async (req, res) => {
   }
 });
 
+router.put('/jobs/:id/discarded', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { discarded } = req.body;
+    
+    const job = await JobApplication.findByPk(id);
+    if (!job) {
+      return res.status(404).json({ error: 'Vaga não encontrada' });
+    }
+    
+    job.discarded = discarded;
+    await job.save();
+    
+    res.json(job);
+  } catch (error) {
+    console.error('Erro ao atualizar status de descarte:', error);
+    res.status(500).json({ error: 'Erro interno ao atualizar descarte' });
+  }
+});
+
 router.get('/jobs/notifications', async (req, res) => {
   try {
     const notifications = await JobApplication.findAll({

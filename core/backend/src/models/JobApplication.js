@@ -15,6 +15,10 @@ const JobApplication = sequelize.define('JobApplication', {
     type: DataTypes.BOOLEAN,
     defaultValue: false
   },
+  discarded: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
   match_score: { type: DataTypes.INTEGER, allowNull: true },
   job_description_raw: { type: DataTypes.TEXT, allowNull: true },
   respostas_ia_raw: { type: DataTypes.JSON, allowNull: true },
